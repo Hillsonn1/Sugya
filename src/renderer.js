@@ -1292,28 +1292,27 @@ $('btn-maximize').addEventListener('click', () => window.talmud.winMaximize())
 $('btn-close').addEventListener('click',    () => window.talmud.winClose())
 
 // ── Search ────────────────────────────────────────────────────────────────────
-const searchModal   = $('search-modal')
+const searchPanel   = $('search-panel')
 const searchInput   = $('search-input')
-const searchClose   = $('search-close')
+const searchGo      = $('search-go')
 const searchStatus  = $('search-status')
 const searchResults = $('search-results')
 const btnSearch     = $('btn-search')
 
 let searchLang = 'both'
-let _searchDebounce = null
 
-function openSearch() {
-  searchModal.classList.add('open')
-  searchInput.focus()
-  searchInput.select()
+// Strip Hebrew nikud/cantillation so "אמר" matches "אָמַר"
+function stripNikud(s) {
+  return s.replace(/[֑-ׇ]/g, '')
 }
 
-function closeSearch() {
-  searchModal.classList.remove('open')
+function toggleSearch() {
+  const open = searchPanel.classList.toggle('open')
+  btnSearch.classList.toggle('active', open)
+  if (open) setTimeout(() => searchInput.focus(), 220)
 }
 
 function parseSearchKey(key) {
-  // key format: "Bava Kamma_002a" — last char = amud, chars [-4:-1] = daf, rest = name
   const amud = key.slice(-1)
   const daf  = parseInt(key.slice(-4, -1), 10)
   const name = key.slice(0, -5)
@@ -1324,58 +1323,68 @@ function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
 }
 
-function highlightMatch(text, query) {
+function highlightMatch(text, queryStripped, isHe) {
   const safe = escHtml(text)
-  if (!query) return safe
-  const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
-  return safe.replace(re, m => `<mark>${m}</mark>`)
+  if (!queryStripped) return safe
+  const haystack = isHe ? escHtml(stripNikud(text)) : safe.toLowerCase()
+  const needle   = isHe ? queryStripped : queryStripped.toLowerCase()
+  const parts = []
+  let i = 0
+  while (i < haystack.length) {
+    const idx = haystack.indexOf(needle, i)
+    if (idx === -1) { parts.push(safe.slice(i)); break }
+    parts.push(safe.slice(i, idx))
+    parts.push(`<mark>${safe.slice(idx, idx + needle.length)}</mark>`)
+    i = idx + needle.length
+  }
+  return parts.join('')
 }
 
 function runSearch() {
   const raw = searchInput.value.trim()
-  if (raw.length < 2) {
+  if (raw.length < 1) {
     searchStatus.textContent = ''
     searchResults.innerHTML = ''
     return
   }
 
-  const q = raw
-  const qLower = q.toLowerCase()
+  const qStripped = stripNikud(raw)   // for Hebrew matching (nikud-insensitive)
+  const qLower    = raw.toLowerCase() // for English matching
+
   const results = []
 
   for (const [key, segments] of translateCache) {
     let bestHe = null, bestEn = null
     for (const seg of segments) {
-      if ((searchLang === 'both' || searchLang === 'he') && !bestHe && seg.he && seg.he.includes(q))
-        bestHe = seg.he
-      if ((searchLang === 'both' || searchLang === 'en') && !bestEn && seg.en && seg.en.toLowerCase().includes(qLower))
-        bestEn = seg.en
+      if (!bestHe && (searchLang === 'both' || searchLang === 'he') && seg.he) {
+        if (stripNikud(seg.he).includes(qStripped)) bestHe = seg.he
+      }
+      if (!bestEn && (searchLang === 'both' || searchLang === 'en') && seg.en) {
+        if (seg.en.toLowerCase().includes(qLower)) bestEn = seg.en
+      }
       if (bestHe && bestEn) break
     }
-    if (bestHe || bestEn) {
-      results.push({ key, bestHe, bestEn })
-      if (results.length >= 100) break
-    }
+    if (bestHe || bestEn) results.push({ key, bestHe, bestEn })
   }
 
-  searchStatus.textContent = results.length === 0
+  const total = results.length
+  searchStatus.textContent = total === 0
     ? 'No results'
-    : results.length === 100
-      ? '100+ results — showing first 100'
-      : `${results.length} result${results.length === 1 ? '' : 's'}`
+    : `${total} result${total === 1 ? '' : 's'}`
 
-  if (results.length === 0) {
+  if (total === 0) {
     searchResults.innerHTML = `<div class="search-empty">Nothing found for "${escHtml(raw)}"</div>`
     return
   }
 
   searchResults.innerHTML = results.map(({ key, bestHe, bestEn }) => {
     const { name, daf, amud } = parseSearchKey(key)
-    const label = `${name} ${daf}${amud}`
-    const heSnippet = bestHe ? `<div class="sr-snippet rtl">${highlightMatch(bestHe, q)}</div>` : ''
-    const enSnippet = bestEn ? `<div class="sr-snippet">${highlightMatch(bestEn, q)}</div>` : ''
+    const heSnippet = bestHe
+      ? `<div class="sr-snippet rtl">${highlightMatch(bestHe, qStripped, true)}</div>` : ''
+    const enSnippet = bestEn
+      ? `<div class="sr-snippet">${highlightMatch(bestEn, qLower, false)}</div>` : ''
     return `<div class="search-result" data-key="${escHtml(key)}">
-      <div class="sr-label">${escHtml(label)}</div>
+      <div class="sr-label">${escHtml(name)} ${daf}${amud}</div>
       ${heSnippet}${enSnippet}
     </div>`
   }).join('')
@@ -1385,30 +1394,18 @@ function runSearch() {
       const { name, daf, amud } = parseSearchKey(el.dataset.key)
       const t = TRACTATES.find(x => x.name === name)
       if (t) navigateTo(t, daf, amud)
-      closeSearch()
     })
   })
 }
 
-btnSearch.addEventListener('click', openSearch)
-searchClose.addEventListener('click', closeSearch)
-searchModal.addEventListener('click', e => { if (e.target === searchModal) closeSearch() })
-
-searchInput.addEventListener('input', () => {
-  clearTimeout(_searchDebounce)
-  _searchDebounce = setTimeout(runSearch, 280)
-})
-
-searchInput.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeSearch()
-  if (e.key === 'Enter') { clearTimeout(_searchDebounce); runSearch() }
-})
+btnSearch.addEventListener('click', toggleSearch)
+searchGo.addEventListener('click', runSearch)
+searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') runSearch() })
 
 document.querySelectorAll('.search-lang-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     searchLang = btn.dataset.lang
     document.querySelectorAll('.search-lang-btn').forEach(b => b.classList.toggle('active', b === btn))
-    if (searchInput.value.trim().length >= 2) runSearch()
   })
 })
 
@@ -1439,7 +1436,7 @@ document.addEventListener('keydown', e => {
 
   if ((e.ctrlKey || e.metaKey) && e.key === 'd') { e.preventDefault(); toggleBookmark() }
   if ((e.ctrlKey || e.metaKey) && e.key === 'p') { e.preventDefault(); printCurrentDaf() }
-  if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); openSearch() }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); toggleSearch() }
 })
 
 // ── Smooth pinch-to-zoom (trackpad) ──────────────────────────────────────────
