@@ -24,6 +24,12 @@
       "preload.js",
       "src/**/*",
       "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../talmud/pdfs",
+        "to": "pdfs"
+      }
     ]
   },
   "dependencies": {

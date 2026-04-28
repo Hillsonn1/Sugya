@@ -3,10 +3,9 @@ const path = require('path')
 const fs = require('fs')
 const https = require('https')
 
-const TALMUD_PDF_ROOT = path.join(
-  require('os').homedir(),
-  'Documents', 'talmud', 'pdfs'
-)
+const TALMUD_PDF_ROOT = app.isPackaged
+  ? path.join(process.resourcesPath, 'pdfs')
+  : path.join(require('os').homedir(), 'Documents', 'talmud', 'pdfs')
 
 const DATA_FILE         = path.join(app.getPath('userData'), 'talmud-data.json')
 const CONFIG_FILE       = path.join(app.getPath('userData'), 'talmud-config.json')
