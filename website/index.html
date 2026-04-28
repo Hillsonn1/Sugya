@@ -218,6 +218,8 @@
       padding: 14px 32px;
       border-radius: 8px;
       text-decoration: none;
+      border: none;
+      cursor: pointer;
       transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
       box-shadow: 0 0 32px rgba(201,168,68,0.22);
       font-family: var(--font);
@@ -530,6 +532,133 @@
       .sim-notes { display: none }
       footer { flex-direction: column; gap: 10px; text-align: center; padding: 24px }
     }
+
+    /* ── Download warning modal ───────────────────────────────────────────── */
+    .dl-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      background: rgba(0,0,0,0.65);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .dl-backdrop.open { display: flex }
+
+    .dl-modal {
+      background: #12161f;
+      border: 1px solid #2a2f45;
+      border-radius: 14px;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.7);
+      position: relative;
+      overflow: hidden;
+    }
+    .dl-modal::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(201,168,68,0.4), transparent);
+    }
+
+    .dl-close {
+      position: absolute;
+      top: 14px; right: 14px;
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(220,60,60,0.15);
+      color: #e05555;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s;
+      font-size: 0;
+      flex-shrink: 0;
+    }
+    .dl-close:hover { background: rgba(220,60,60,0.3) }
+
+    .dl-body {
+      padding: 32px 32px 0;
+    }
+    .dl-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text-1);
+      margin-bottom: 10px;
+      letter-spacing: -0.3px;
+      padding-right: 28px;
+    }
+    .dl-intro {
+      font-size: 13.5px;
+      color: var(--text-2);
+      line-height: 1.6;
+      margin-bottom: 22px;
+    }
+
+    .dl-steps { display: flex; flex-direction: column; gap: 14px; margin-bottom: 28px }
+    .dl-step {
+      display: flex;
+      gap: 13px;
+      align-items: flex-start;
+    }
+    .dl-step-num {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: var(--gold-glow);
+      border: 1px solid rgba(201,168,68,0.25);
+      color: var(--gold);
+      font-size: 11px;
+      font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .dl-step-text {
+      font-size: 13px;
+      color: var(--text-2);
+      line-height: 1.55;
+    }
+    .dl-step-text strong { color: var(--text-1); font-weight: 600 }
+
+    .dl-footer {
+      padding: 20px 32px 24px;
+      border-top: 1px solid #1e2336;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .dl-safe {
+      font-size: 11.5px;
+      color: var(--text-3);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .dl-safe svg { color: #3a7a4a; flex-shrink: 0 }
+    .dl-continue {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--gold);
+      color: #000;
+      font-weight: 700;
+      font-size: 13.5px;
+      padding: 10px 22px;
+      border-radius: 7px;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      font-family: var(--font);
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+    .dl-continue:hover { background: var(--gold-lt) }
   </style>
 </head>
 <body>
@@ -680,14 +809,14 @@
     <div class="section-label">Ready to learn?</div>
     <h2>Ready to learn?</h2>
     <p>Download, open, and you're learning. No account, no internet, no friction.</p>
-    <a href="https://github.com/Hillsonn1/Sugya/releases/download/v1.0.0/Sugya.Setup.1.0.0.exe" class="btn-download">
+    <button class="btn-download" onclick="openDownloadModal()">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
         <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
         <polyline points="7 10 12 15 17 10"/>
         <line x1="12" y1="15" x2="12" y2="3"/>
       </svg>
       Download Sugya
-    </a>
+    </button>
     <div class="system-req">Windows 10 or later &nbsp;·&nbsp; 64-bit &nbsp;·&nbsp; Free</div>
   </section>
  ────────────────────────────────────────────────────────────── -->
@@ -700,6 +829,79 @@
     </a>
     <span>Translation © Koren Publishers · William Davidson Edition · CC BY-NC</span>
   </footer>
+
+  <!-- ── Download Warning Modal ───────────────────────────────────────────── -->
+  <div class="dl-backdrop" id="dl-backdrop" onclick="handleBackdropClick(event)">
+    <div class="dl-modal">
+      <button class="dl-close" onclick="closeDownloadModal()" aria-label="Close">
+        <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
+          <line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1.8"/>
+          <line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" stroke-width="1.8"/>
+        </svg>
+      </button>
+
+      <div class="dl-body">
+        <div class="dl-title">A note about Windows security</div>
+        <p class="dl-intro">
+          Windows flags apps from independent developers as "unknown" — this is normal for any app not distributed through the Microsoft Store.
+          Here's what to expect and how to get through it:
+        </p>
+
+        <div class="dl-steps">
+          <div class="dl-step">
+            <div class="dl-step-num">1</div>
+            <div class="dl-step-text">
+              Your browser may warn <strong>"This file may be dangerous."</strong> Click the download icon or the <strong>⋮</strong> menu next to the file and choose <strong>Keep</strong> or <strong>Keep anyway</strong>.
+            </div>
+          </div>
+          <div class="dl-step">
+            <div class="dl-step-num">2</div>
+            <div class="dl-step-text">
+              When you run the installer, Windows SmartScreen may say <strong>"Windows protected your PC."</strong> Click <strong>More info</strong>, then <strong>Run anyway</strong>.
+            </div>
+          </div>
+          <div class="dl-step">
+            <div class="dl-step-num">3</div>
+            <div class="dl-step-text">
+              The installer takes a few seconds. Sugya opens automatically when it's done.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dl-footer">
+        <span class="dl-safe">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          Open source &nbsp;·&nbsp; No telemetry
+        </span>
+        <a class="dl-continue" href="https://github.com/Hillsonn1/Sugya/releases/download/v1.0.0/Sugya.Setup.1.0.0.exe" onclick="closeDownloadModal()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Continue to download
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function openDownloadModal() {
+      document.getElementById('dl-backdrop').classList.add('open')
+      document.body.style.overflow = 'hidden'
+    }
+    function closeDownloadModal() {
+      document.getElementById('dl-backdrop').classList.remove('open')
+      document.body.style.overflow = ''
+    }
+    function handleBackdropClick(e) {
+      if (e.target === document.getElementById('dl-backdrop')) closeDownloadModal()
+    }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDownloadModal() })
+  </script>
 
 </body>
 </html>
