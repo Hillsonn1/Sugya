@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sugya — Gemara Study for Windows</title>
+  <meta name="description" content="A beautiful desktop app for learning Gemara. Full Vilna Shas PDF viewer, English translations, notes, highlights, and more.">
+  <link rel="icon" type="image/png" href="icon.png">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
+
+    :root {
+      --bg-0:      #0a0d14;
+      --bg-1:      #111520;
+      --bg-2:      #1a1f2e;
+      --bg-3:      #222840;
+      --gold:      #c9a844;
+      --gold-lt:   #d4b45a;
+      --gold-glow: rgba(201,168,68,0.15);
+      --text-1:    #e8eaf0;
+      --text-2:    #8b94b0;
+      --text-3:    #505878;
+      --border:    #1f2540;
+      --border-b:  #2c3354;
+      --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      --radius: 10px;
+    }
+
+    html { scroll-behavior: smooth }
+
+    body {
+      background: var(--bg-0);
+      color: var(--text-1);
+      font-family: var(--font);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Logo (shared) ────────────────────────────────────────────────────── */
+    /* Wrapping container blends logo edges into whatever background sits behind it */
+    .logo-img-wrap {
+      position: relative;
+      display: inline-flex;
+      border-radius: 22.5%;
+      overflow: hidden;
+      flex-shrink: 0;
+      line-height: 0;
+    }
+    .logo-img-wrap img { display: block; width: 100%; height: 100% }
+    /* Radial vignette fades corners to the page background — no hard seam */
+    .logo-img-wrap::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: radial-gradient(circle at 50% 50%, transparent 52%, var(--bg-0) 82%);
+      pointer-events: none;
+    }
+
+    /* ── Nav ──────────────────────────────────────────────────────────────── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 48px;
+      height: 60px;
+      background: rgba(10,13,20,0.88);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text-1);
+      letter-spacing: -0.3px;
+      text-decoration: none;
+    }
+    .nav-logo .logo-img-wrap { width: 28px; height: 28px }
+    /* Nav background is semi-transparent — override vignette target color to match */
+    .nav-logo .logo-img-wrap::after {
+      background: radial-gradient(circle at 50% 50%, transparent 52%, #0a0d14 82%);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      list-style: none;
+    }
+    .nav-links a {
+      color: var(--text-2);
+      text-decoration: none;
+      font-size: 13.5px;
+      transition: color 0.15s;
+    }
+    .nav-links a:hover { color: var(--text-1) }
+
+    .nav-download {
+      background: var(--gold) !important;
+      color: #000 !important;
+      font-weight: 600 !important;
+      padding: 7px 18px;
+      border-radius: 6px;
+      font-size: 13px !important;
+      transition: background 0.15s !important;
+    }
+    .nav-download:hover { background: var(--gold-lt) !important }
+
+    /* ── Hero ─────────────────────────────────────────────────────────────── */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 120px 24px 80px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(201,168,68,0.07) 0%, transparent 70%),
+        radial-gradient(ellipse 60% 40% at 80% 100%, rgba(100,120,200,0.04) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .hero-logo-wrap {
+      width: 148px;
+      height: 148px;
+      margin-bottom: 32px;
+    }
+    .hero-logo-wrap::after {
+      background: radial-gradient(circle at 50% 50%, transparent 48%, var(--bg-0) 78%);
+    }
+
+    .hero h1 {
+      font-size: clamp(42px, 7vw, 72px);
+      font-weight: 800;
+      letter-spacing: -2.5px;
+      line-height: 1.05;
+      margin-bottom: 24px;
+      background: linear-gradient(160deg, #e8eaf0 30%, #8b94b0 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .h1-sugya {
+      font-size: clamp(68px, 13vw, 128px);
+      letter-spacing: -5px;
+      line-height: 1;
+      padding-bottom: 0.15em;
+      background: linear-gradient(140deg, var(--gold-lt) 0%, var(--gold) 60%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      display: block;
+    }
+
+    .hero-tagline {
+      font-size: clamp(17px, 2.5vw, 21px);
+      color: var(--text-2);
+      max-width: 520px;
+      margin-bottom: 48px;
+      line-height: 1.5;
+    }
+
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .btn-download {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--gold);
+      color: #000;
+      font-weight: 700;
+      font-size: 15px;
+      padding: 14px 32px;
+      border-radius: 8px;
+      text-decoration: none;
+      transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
+      box-shadow: 0 0 32px rgba(201,168,68,0.22);
+      font-family: var(--font);
+    }
+    .btn-download:hover {
+      background: var(--gold-lt);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 40px rgba(201,168,68,0.32);
+    }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-2);
+      font-size: 14px;
+      text-decoration: none;
+      padding: 14px 22px;
+      border: 1px solid var(--border-b);
+      border-radius: 8px;
+      transition: color 0.15s, border-color 0.15s;
+      font-family: var(--font);
+    }
+    .btn-secondary:hover { color: var(--text-1); border-color: var(--text-3) }
+
+    .hero-meta {
+      margin-top: 22px;
+      font-size: 12px;
+      color: var(--text-3);
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+    .hero-meta span { display: flex; align-items: center; gap: 5px }
+
+    /* ── App mockup ───────────────────────────────────────────────────────── */
+    .screenshot-wrap {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 0 24px 100px;
+    }
+    .screenshot-frame {
+      background: var(--bg-1);
+      border: 1px solid var(--border-b);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 0 0 1px var(--border), 0 32px 80px rgba(0,0,0,0.6);
+    }
+    .screenshot-titlebar {
+      background: var(--bg-2);
+      height: 38px;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border-b) }
+    .screenshot-body {
+      background: var(--bg-0);
+      height: 520px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .screenshot-body::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(201,168,68,0.03) 0%, transparent 70%);
+    }
+
+    /* Simulated app UI */
+    .sim-nav {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 44px;
+      background: var(--bg-1);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 10px;
+    }
+    .sim-pill {
+      background: var(--bg-3);
+      border-radius: 5px;
+      height: 22px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 10px;
+      font-size: 10px;
+      color: var(--text-2);
+      white-space: nowrap;
+    }
+    .sim-pill.gold {
+      background: var(--gold-glow);
+      color: var(--gold);
+      border: 1px solid rgba(201,168,68,0.2);
+    }
+    .sim-nav-center {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    .sim-daf-label { font-size: 13px; font-weight: 600; color: var(--text-1) }
+    .sim-content {
+      position: absolute;
+      top: 44px; bottom: 26px; left: 0; right: 0;
+      display: flex;
+    }
+    .sim-viewer {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .sim-page {
+      background: #f5f0e8;
+      border-radius: 3px;
+      width: 230px;
+      height: 330px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      overflow: hidden;
+    }
+    .sim-text-col { display: flex; flex-direction: column; gap: 5px; padding: 14px; width: 100% }
+    .sim-text-line { height: 4px; border-radius: 2px; background: rgba(0,0,0,0.14) }
+    .sim-notes {
+      width: 190px;
+      border-left: 1px solid var(--border);
+      background: var(--bg-1);
+      display: flex;
+      flex-direction: column;
+    }
+    .sim-notes-header {
+      padding: 9px 14px;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-2);
+      border-bottom: 1px solid var(--border);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .sim-notes-body { flex: 1; padding: 10px 14px; display: flex; flex-direction: column; gap: 6px }
+    .sim-notes-line { height: 3px; border-radius: 2px; background: var(--bg-3) }
+    .sim-status {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 26px;
+      background: var(--bg-2);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      font-size: 10px;
+      color: var(--gold);
+      gap: 5px;
+    }
+
+    /* ── Simplicity strip ────────────────────────────────────────────────── */
+    .simplicity-strip {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 20px 24px;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-1);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-2);
+      letter-spacing: 0.2px;
+    }
+    .strip-dot {
+      width: 3px; height: 3px;
+      border-radius: 50%;
+      background: var(--border-b);
+      flex-shrink: 0;
+    }
+
+    /* ── Features ─────────────────────────────────────────────────────────── */
+    .features {
+      max-width: 1060px;
+      margin: 0 auto;
+      padding: 80px 24px 100px;
+    }
+    .section-label {
+      text-align: center;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      color: var(--gold);
+      margin-bottom: 14px;
+      font-weight: 500;
+    }
+    .section-title {
+      text-align: center;
+      font-size: clamp(28px, 4vw, 40px);
+      font-weight: 700;
+      letter-spacing: -1px;
+      margin-bottom: 10px;
+    }
+    .section-sub {
+      text-align: center;
+      color: var(--text-2);
+      font-size: 16px;
+      max-width: 480px;
+      margin: 0 auto 60px;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2px;
+    }
+    .feature-card {
+      background: var(--bg-1);
+      padding: 30px 26px;
+      border: 1px solid var(--border);
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .feature-card:hover { background: var(--bg-2); border-color: var(--border-b) }
+    .feature-card:first-child               { border-radius: var(--radius) 0 0 0 }
+    .feature-card:nth-child(3)              { border-radius: 0 var(--radius) 0 0 }
+    .feature-card:nth-child(4)              { border-radius: 0 0 0 var(--radius) }
+    .feature-card:last-child                { border-radius: 0 0 var(--radius) 0 }
+    .feature-icon {
+      width: 38px; height: 38px;
+      background: var(--gold-glow);
+      border: 1px solid rgba(201,168,68,0.2);
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+      color: var(--gold);
+    }
+    .feature-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 8px }
+    .feature-card p  { font-size: 13.5px; color: var(--text-2); line-height: 1.65 }
+
+    /* ── CTA ──────────────────────────────────────────────────────────────── */
+    .cta {
+      padding: 100px 24px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .cta::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 70% 80% at 50% 100%, rgba(201,168,68,0.05) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .cta-logo-wrap {
+      width: 72px; height: 72px;
+      margin: 0 auto 28px;
+    }
+    .cta-logo-wrap::after {
+      background: radial-gradient(circle at 50% 50%, transparent 48%, var(--bg-0) 78%);
+    }
+    .cta h2 {
+      font-size: clamp(28px, 4vw, 44px);
+      font-weight: 700;
+      letter-spacing: -1.5px;
+      margin-bottom: 14px;
+    }
+    .cta p {
+      font-size: 16px;
+      color: var(--text-2);
+      max-width: 400px;
+      margin: 0 auto 40px;
+    }
+    .system-req { margin-top: 20px; font-size: 12px; color: var(--text-3) }
+
+    /* ── Footer ───────────────────────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 28px 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12.5px;
+      color: var(--text-3);
+    }
+    .footer-logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      color: var(--text-2);
+      text-decoration: none;
+    }
+    .footer-logo .logo-img-wrap { width: 20px; height: 20px }
+    .footer-logo .logo-img-wrap::after {
+      background: radial-gradient(circle at 50% 50%, transparent 52%, var(--bg-0) 82%);
+    }
+
+    /* ── Responsive ───────────────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      nav { padding: 0 20px }
+      .nav-links { display: none }
+      .features-grid { grid-template-columns: 1fr; border-radius: var(--radius); overflow: hidden }
+      .feature-card { border-radius: 0 !important }
+      .sim-notes { display: none }
+      footer { flex-direction: column; gap: 10px; text-align: center; padding: 24px }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Nav ──────────────────────────────────────────────────────────────── -->
+  <nav>
+    <a href="#" class="nav-logo">
+      <div class="logo-img-wrap" style="width:28px;height:28px">
+        <img src="icon.png" alt="Sugya">
+      </div>
+      Sugya
+    </a>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#download" class="nav-download">Download</a></li>
+    </ul>
+  </nav>
+
+  <!-- ── Hero ─────────────────────────────────────────────────────────────── -->
+  <section class="hero">
+    <div class="logo-img-wrap hero-logo-wrap">
+      <img src="icon.png" alt="Sugya">
+    </div>
+    <h1>Get into the<br><span class="h1-sugya">Sugya.</span></h1>
+    <p class="hero-tagline">
+      A desktop app built for serious Gemara learning —
+      the full Vilna Shas, English translation, notes, and highlights, all in one place.
+    </p>
+    <div class="hero-actions">
+      <a href="#download" class="btn-download">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Download for Windows
+      </a>
+      <a href="#features" class="btn-secondary">
+        See features
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+      </a>
+    </div>
+    <div class="hero-meta">
+      <span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+        </svg>
+        Windows 10 / 11
+      </span>
+      <span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
+        Free
+      </span>
+      <span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M1 6s4-2 11-2 11 2 11 2v12s-4 2-11 2S1 18 1 18V6z"/><line x1="1" y1="12" x2="23" y2="12"/>
+        </svg>
+        Works offline
+      </span>
+    </div>
+  </section>
+
+  <!-- ── Simplicity strip ──────────────────────────────────────────────────── -->
+  <div class="simplicity-strip">
+    <span>No account required</span>
+    <span class="strip-dot"></span>
+    <span>No internet needed</span>
+    <span class="strip-dot"></span>
+    <span>Open and learn</span>
+  </div>
+
+  <!-- ── Features ──────────────────────────────────────────────────────────── -->
+  <section class="features" id="features">
+    <div class="section-label">Everything you need</div>
+    <h2 class="section-title">Powerful. Simple. Just learn.</h2>
+    <p class="section-sub">Everything you need is one click away. Nothing requires configuration.</p>
+
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
+          </svg>
+        </div>
+        <h3>Full Vilna Shas</h3>
+        <p>Every daf, instantly. Gemara, Rashi, and Tosfos in the classic layout — just click a masechta and start.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 5h12M9 3v2m4.5 13l-3-6-3 6m0 0h6M21 21l-6-6m0 0l3-3m-3 3l-3-3"/>
+          </svg>
+        </div>
+        <h3>English Translation</h3>
+        <p>One click opens the William Davidson translation alongside the daf. Already downloaded — works instantly, offline.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+            <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+        </div>
+        <h3>Daf Yomi Tracker</h3>
+        <p>Jump to today's daf in one click. Track your streak, mark amudim as learned, and watch your progress across all of Shas.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+        </div>
+        <h3>Notes</h3>
+        <p>Just start typing — notes auto-save as you go, attached to the daf you're on. No file management, no extra steps.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+          </svg>
+        </div>
+        <h3>Highlights</h3>
+        <p>Mark up any page in four colors. Highlights are saved and restored every time you return.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/>
+          </svg>
+        </div>
+        <h3>Bookmarks</h3>
+        <p>Bookmark any daf and jump back instantly. Keep track of where you're learning across multiple masechtos.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CTA ───────────────────────────────────────────────────────────────── -->
+  <section class="cta">
+    <div id="download" style="position:relative;top:-80px"></div>
+    <div class="logo-img-wrap cta-logo-wrap">
+      <img src="icon.png" alt="Sugya">
+    </div>
+    <div class="section-label">Ready to learn?</div>
+    <h2>Ready to learn?</h2>
+    <p>Download, open, and you're learning. No account, no internet, no friction.</p>
+    <a href="sugya-setup.exe" class="btn-download">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Download Sugya
+    </a>
+    <div class="system-req">Windows 10 or later &nbsp;·&nbsp; 64-bit &nbsp;·&nbsp; Free</div>
+  </section>
+ ────────────────────────────────────────────────────────────── -->
+  <footer>
+    <a href="#" class="footer-logo">
+      <div class="logo-img-wrap" style="width:20px;height:20px">
+        <img src="icon.png" alt="Sugya">
+      </div>
+      Sugya
+    </a>
+    <span>Translation © Koren Publishers · William Davidson Edition · CC BY-NC</span>
+  </footer>
+
+</body>
+</html>
