@@ -109,6 +109,7 @@ let _zoomDebounce = null
 let _scrollRAF = null
 let _appendingPage = false
 let _prependingPage = false
+let _suppressPrepend = false
 let apiKey = ''
 let translateMode = false
 let translateCache = new Map()  // key → [{en, he}]
@@ -391,6 +392,7 @@ async function renderPdfPage(info) {
 
 // ── Scroll view management ────────────────────────────────────────────────────
 async function initScrollView(t, daf, amud) {
+  _suppressPrepend = true
   pagesContainer.innerHTML = ''
   pageMap.clear()
   pageOrder.length = 0
@@ -402,6 +404,7 @@ async function initScrollView(t, daf, amud) {
   pageOrder.push(info.key)
   viewerScroll.scrollTop = 0
   await loadPagePdf(info)
+  _suppressPrepend = false
 }
 
 async function appendNextPage() {
@@ -470,7 +473,7 @@ function onViewerScroll() {
   const st = viewerScroll.scrollTop
   const distToBottom = viewerScroll.scrollHeight - st - viewerScroll.clientHeight
   if (distToBottom < 1200 && !_appendingPage) appendNextPage()
-  if (st < 1200 && !_prependingPage) prependPrevPage()
+  if (st < 1200 && !_prependingPage && !_suppressPrepend) prependPrevPage()
 }
 
 function setCurrentPage(t, daf, amud) {
@@ -1323,21 +1326,40 @@ function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
 }
 
-function highlightMatch(text, queryStripped, isHe) {
-  const safe = escHtml(text)
-  if (!queryStripped) return safe
-  const haystack = isHe ? escHtml(stripNikud(text)) : safe.toLowerCase()
-  const needle   = isHe ? queryStripped : queryStripped.toLowerCase()
-  const parts = []
-  let i = 0
-  while (i < haystack.length) {
-    const idx = haystack.indexOf(needle, i)
-    if (idx === -1) { parts.push(safe.slice(i)); break }
-    parts.push(safe.slice(i, idx))
-    parts.push(`<mark>${safe.slice(idx, idx + needle.length)}</mark>`)
-    i = idx + needle.length
+function makeSnippet(text, query, isHe) {
+  const normalized = isHe ? stripNikud(text) : text.toLowerCase()
+  const idx = normalized.indexOf(query)
+  if (idx === -1) return escHtml(text.slice(0, 200))
+
+  if (isHe) {
+    // Build map from stripped index → original index
+    const map = []
+    for (let i = 0; i < text.length; i++) {
+      if (!/[֑-ׇ]/.test(text[i])) map.push(i)
+    }
+    map.push(text.length) // sentinel
+
+    const origMatchStart = map[idx]
+    const origMatchEnd   = map[Math.min(idx + query.length, map.length - 1)]
+    const winStart = Math.max(0, origMatchStart - 80)
+    const winEnd   = Math.min(text.length, origMatchEnd + 120)
+
+    return (winStart > 0 ? '…' : '') +
+      escHtml(text.slice(winStart, origMatchStart)) +
+      `<mark>${escHtml(text.slice(origMatchStart, origMatchEnd))}</mark>` +
+      escHtml(text.slice(origMatchEnd, winEnd)) +
+      (winEnd < text.length ? '…' : '')
+  } else {
+    // English: positions in text.toLowerCase() align 1-to-1 with text
+    const winStart = Math.max(0, idx - 80)
+    const winEnd   = Math.min(text.length, idx + query.length + 120)
+
+    return (winStart > 0 ? '…' : '') +
+      escHtml(text.slice(winStart, idx)) +
+      `<mark>${escHtml(text.slice(idx, idx + query.length))}</mark>` +
+      escHtml(text.slice(idx + query.length, winEnd)) +
+      (winEnd < text.length ? '…' : '')
   }
-  return parts.join('')
 }
 
 function runSearch() {
@@ -1380,9 +1402,9 @@ function runSearch() {
   searchResults.innerHTML = results.map(({ key, bestHe, bestEn }) => {
     const { name, daf, amud } = parseSearchKey(key)
     const heSnippet = bestHe
-      ? `<div class="sr-snippet rtl">${highlightMatch(bestHe, qStripped, true)}</div>` : ''
+      ? `<div class="sr-snippet rtl">${makeSnippet(bestHe, qStripped, true)}</div>` : ''
     const enSnippet = bestEn
-      ? `<div class="sr-snippet">${highlightMatch(bestEn, qLower, false)}</div>` : ''
+      ? `<div class="sr-snippet">${makeSnippet(bestEn, qLower, false)}</div>` : ''
     return `<div class="search-result" data-key="${escHtml(key)}">
       <div class="sr-label">${escHtml(name)} ${daf}${amud}</div>
       ${heSnippet}${enSnippet}
