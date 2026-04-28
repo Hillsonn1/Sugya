@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sugya — Gemara Study for Windows</title>
   <meta name="description" content="A beautiful desktop app for learning Gemara. Full Vilna Shas PDF viewer, English translations, notes, highlights, and more.">
+  <meta property="og:title" content="Sugya — Gemara Study for Windows">
+  <meta property="og:description" content="The full Vilna Shas, English translation, notes, highlights, and Daf Yomi tracker — all in one free desktop app.">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Sugya — Gemara Study for Windows">
+  <meta name="twitter:description" content="The full Vilna Shas, English translation, notes, highlights, and Daf Yomi tracker — all in one free desktop app.">
   <link rel="icon" type="image/png" href="icon.png">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
@@ -688,14 +694,14 @@
       the full Vilna Shas, English translation, notes, and highlights, all in one place.
     </p>
     <div class="hero-actions">
-      <a href="#download" class="btn-download">
+      <button class="btn-download" onclick="openDownloadModal()">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
           <polyline points="7 10 12 15 17 10"/>
           <line x1="12" y1="15" x2="12" y2="3"/>
         </svg>
         Download for Windows
-      </a>
+      </button>
       <a href="#features" class="btn-secondary">
         See features
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -806,7 +812,6 @@
     <div class="logo-img-wrap cta-logo-wrap">
       <img src="icon.png" alt="Sugya">
     </div>
-    <div class="section-label">Ready to learn?</div>
     <h2>Ready to learn?</h2>
     <p>Download, open, and you're learning. No account, no internet, no friction.</p>
     <button class="btn-download" onclick="openDownloadModal()">
@@ -828,6 +833,12 @@
       Sugya
     </a>
     <span>Translation © Koren Publishers · William Davidson Edition · CC BY-NC</span>
+    <a href="https://github.com/Hillsonn1/Sugya" target="_blank" rel="noopener" style="color:var(--text-3);text-decoration:none;display:flex;align-items:center;gap:6px;transition:color 0.15s" onmouseover="this.style.color='var(--text-2)'" onmouseout="this.style.color='var(--text-3)'">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.009-.868-.013-1.703-2.782.604-3.369-1.341-3.369-1.341-.454-1.155-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.741 0 .267.18.579.688.481C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z"/>
+      </svg>
+      GitHub
+    </a>
   </footer>
 
   <!-- ── Download Warning Modal ───────────────────────────────────────────── -->
@@ -870,12 +881,12 @@
       </div>
 
       <div class="dl-footer">
-        <span class="dl-safe">
+        <a class="dl-safe" href="https://github.com/Hillsonn1/Sugya" target="_blank" rel="noopener" style="text-decoration:none">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
           </svg>
           Open source &nbsp;·&nbsp; No telemetry
-        </span>
+        </a>
         <a class="dl-continue" href="https://github.com/Hillsonn1/Sugya/releases/download/v1.0.0/Sugya.Setup.1.0.0.exe" onclick="closeDownloadModal()">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
