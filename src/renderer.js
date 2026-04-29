@@ -128,6 +128,18 @@ async function fetchOcrWords(t, daf, amud) {
   return words
 }
 
+// Lazy memo of nikud-stripped Hebrew per translation segment.
+// Search re-runs on every keystroke; without this, every search re-strips
+// every Hebrew segment for every cached amud (5000+ amudim × N segments).
+const _strippedSegCache = new Map()  // pageKey → (string|null)[]
+function strippedSegmentsFor(key, segments) {
+  let cached = _strippedSegCache.get(key)
+  if (cached && cached.length === segments.length) return cached
+  cached = segments.map(s => s.he ? stripNikud(s.he) : null)
+  _strippedSegCache.set(key, cached)
+  return cached
+}
+
 const pageMap = new Map()   // key → info object
 const pageOrder = []         // keys in display order (top → bottom)
 
@@ -474,6 +486,7 @@ function onViewerScroll() {
 }
 
 function setCurrentPage(t, daf, amud) {
+  flushPendingNotes()
   const tractateChanged = t !== currentTractate
   currentTractate = t
   currentDaf = daf
@@ -590,6 +603,7 @@ function updateDafDropdown() {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 function navigateTo(t, daf, amud, saveState = true) {
+  flushPendingNotes()
   const key = makePageKey(t, daf, amud)
 
   currentTractate = t
@@ -723,9 +737,8 @@ async function applySearchHL(info, hlText, segHe = '', occurrenceIdx = 0) {
     if (!boxes.length && segHe) boxes = findByContext(words, hlText, segHe)
     // 2. Context failed: pick the n-th direct match using occurrence index
     if (!boxes.length) {
-      const pool = findMatchingBoxes(gemaraWords, hlText).length
-        ? findMatchingBoxes(gemaraWords, hlText)
-        : findMatchingBoxes(words, hlText)
+      let pool = findMatchingBoxes(gemaraWords, hlText)
+      if (!pool.length) pool = findMatchingBoxes(words, hlText)
       if (pool.length) boxes = [pool[Math.min(occurrenceIdx, pool.length - 1)]]
     }
     if (!boxes.length) return
@@ -750,17 +763,25 @@ function findMatchingBoxes(pool, hlText) {
     .filter(t => t.length >= 2)
   if (!tokens.length) return []
 
+  // Pre-strip nikud from OCR words once — was being recomputed N×M times
+  const stripped = pool.map(w => stripNikud(w[0]))
+
   if (tokens.length === 1) {
-    return pool
-      .filter(w => stripNikud(w[0]).includes(tokens[0]))
-      .map(w => [w[1], w[2], w[3], w[4]])
+    const results = []
+    for (let i = 0; i < pool.length; i++) {
+      if (stripped[i].includes(tokens[0])) {
+        const w = pool[i]
+        results.push([w[1], w[2], w[3], w[4]])
+      }
+    }
+    return results
   }
 
   const results = []
   for (let i = 0; i <= pool.length - tokens.length; i++) {
     let match = true
     for (let j = 0; j < tokens.length; j++) {
-      const tok = tokens[j], txt = stripNikud(pool[i + j][0])
+      const tok = tokens[j], txt = stripped[i + j]
       if (!txt.includes(tok) && !tok.includes(txt)) { match = false; break }
     }
     if (match) {
@@ -794,18 +815,21 @@ function findByContext(gemaraWords, hlText, segHe) {
   // First token of the search text — used to verify the candidate word is actually the target
   const firstTok = tokenize(hlText)[0] || ''
 
-  function ctxMatch(pool, ctx, i) {
+  // Pre-strip nikud once — inner ctxMatch/targetMatch were recomputing this per check
+  const stripped = gemaraWords.map(w => stripNikud(w[0]))
+
+  function ctxMatch(ctx, i) {
     for (let j = 0; j < ctx.length; j++) {
-      const ocrTxt = stripNikud(pool[i + j][0])
+      const ocrTxt = stripped[i + j]
       const tok    = ctx[j]
       if (!ocrTxt.includes(tok) && !tok.includes(ocrTxt)) return false
     }
     return true
   }
 
-  function targetMatch(pool, idx) {
+  function targetMatch(idx) {
     if (!firstTok) return true
-    const txt = stripNikud(pool[idx][0])
+    const txt = stripped[idx]
     return txt.includes(firstTok) || firstTok.includes(txt)
   }
 
@@ -813,7 +837,7 @@ function findByContext(gemaraWords, hlText, segHe) {
   for (let len = Math.min(5, beforeAll.length); len >= 2; len--) {
     const ctx = beforeAll.slice(-len)
     for (let i = 0; i + len < gemaraWords.length; i++) {
-      if (ctxMatch(gemaraWords, ctx, i) && targetMatch(gemaraWords, i + len)) {
+      if (ctxMatch(ctx, i) && targetMatch(i + len)) {
         const w = gemaraWords[i + len]
         return [[w[1], w[2], w[3], w[4]]]
       }
@@ -824,7 +848,7 @@ function findByContext(gemaraWords, hlText, segHe) {
   for (let len = Math.min(5, afterAll.length); len >= 2; len--) {
     const ctx = afterAll.slice(0, len)
     for (let i = 1; i + len <= gemaraWords.length; i++) {
-      if (ctxMatch(gemaraWords, ctx, i) && targetMatch(gemaraWords, i - 1)) {
+      if (ctxMatch(ctx, i) && targetMatch(i - 1)) {
         const w = gemaraWords[i - 1]
         return [[w[1], w[2], w[3], w[4]]]
       }
@@ -1025,6 +1049,16 @@ notesArea.addEventListener('input', () => {
   clearTimeout(notesTimer)
   notesTimer = setTimeout(saveNotes, 800)
 })
+
+// Flush any pending notes save synchronously — call before currentTractate/Daf/Amud
+// change, otherwise the in-flight 800ms timer fires after the change and saves
+// the new page's text against the new key, silently losing the typed note.
+function flushPendingNotes() {
+  if (!notesTimer) return
+  clearTimeout(notesTimer)
+  notesTimer = null
+  saveNotes()
+}
 
 // ── Streak tracking ───────────────────────────────────────────────────────────
 function updateStreak() {
@@ -1464,7 +1498,7 @@ function parseSearchKey(key) {
 }
 
 function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
 }
 
 function makeSnippet(text, query, isHe) {
@@ -1540,12 +1574,15 @@ function runSearch() {
 
   const results = []
 
+  const wantHe = searchLang === 'both' || searchLang === 'he'
+  const wantEn = searchLang === 'both' || searchLang === 'en'
+
   for (const [key, segments] of translateCache) {
-    for (const seg of segments) {
-      const heMatch = (searchLang === 'both' || searchLang === 'he') && seg.he
-        && stripNikud(seg.he).includes(qStripped)
-      const enMatch = (searchLang === 'both' || searchLang === 'en') && seg.en
-        && seg.en.toLowerCase().includes(qLower)
+    const stripped = wantHe ? strippedSegmentsFor(key, segments) : null
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i]
+      const heMatch = wantHe && stripped[i] && stripped[i].includes(qStripped)
+      const enMatch = wantEn && seg.en && seg.en.toLowerCase().includes(qLower)
       if (heMatch || enMatch) {
         // hlText: Hebrew query for Hebrew matches; empty for English-only
         // (can't reliably map English match → specific Hebrew phrase on page)
