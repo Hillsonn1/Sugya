@@ -29,6 +29,10 @@
       {
         "from": "../talmud/pdfs",
         "to": "pdfs"
+      },
+      {
+        "from": "src/ocr-data",
+        "to": "ocr-data"
       }
     ]
   },

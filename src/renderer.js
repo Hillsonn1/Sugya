@@ -114,6 +114,20 @@ let apiKey = ''
 let translateMode = false
 let translateCache = new Map()  // key → [{en, he}]
 
+// ── OCR / Search-word highlighting ────────────────────────────────────────────
+const searchWordHls = new Map()  // page key → [[x,y,w,h], …] normalized
+let   pendingSearchHL = null      // {key, hlText, segHe} set on search-result click
+const _searchResultSegs = []      // parallel array to search results — stores segHe for context fallback
+
+const _ocrPageCache = new Map()  // pageKey → words array (avoids redundant IPC per zoom)
+async function fetchOcrWords(t, daf, amud) {
+  const key = makePageKey(t, daf, amud)
+  if (_ocrPageCache.has(key)) return _ocrPageCache.get(key)
+  const words = await window.talmud.getOcrWords(t.name, daf, amud)
+  _ocrPageCache.set(key, words)
+  return words
+}
+
 const pageMap = new Map()   // key → info object
 const pageOrder = []         // keys in display order (top → bottom)
 
@@ -259,14 +273,9 @@ function createPageEl(t, daf, amud) {
   if (highlightMode && !eraseMode) hlCnv.classList.add('drawing-mode')
   if (highlightMode && eraseMode)  hlCnv.classList.add('erase-mode')
 
-  const tl = document.createElement('div')
-  tl.className = 'textLayer'
-  if (highlightMode) tl.classList.add('hl-active')
-
   inner.appendChild(loadDiv)
   inner.appendChild(canvas)
   inner.appendChild(hlCnv)
-  inner.appendChild(tl)
 
   const label = document.createElement('div')
   label.className = 'page-label'
@@ -275,7 +284,7 @@ function createPageEl(t, daf, amud) {
   wrap.appendChild(inner)
   wrap.appendChild(label)
 
-  const info = { key, t, daf, amud, wrap, inner, canvas, hlCnv, tl, loadDiv, pdfDoc: null, tlObj: null }
+  const info = { key, t, daf, amud, wrap, inner, canvas, hlCnv, loadDiv, pdfDoc: null }
   pageMap.set(key, info)
   setupHlEvents(info)
   return info
@@ -342,11 +351,16 @@ async function loadPagePdf(info) {
   info.pdfDoc = pdfDoc
   await renderPdfPage(info)
   redrawPageHighlights(info)
+  if (pendingSearchHL && pendingSearchHL.key === info.key) {
+    const hl = pendingSearchHL
+    pendingSearchHL = null
+    await applySearchHL(info, hl.hlText, hl.segHe || '', hl.occurrenceIdx || 0)
+  }
 }
 
 async function renderPdfPage(info) {
   if (!info.pdfDoc) return
-  const { canvas, hlCnv, inner, loadDiv, tl } = info
+  const { canvas, hlCnv, inner, loadDiv } = info
   const dpr = window.devicePixelRatio || 1
   const page = await info.pdfDoc.getPage(1)
   const viewport = page.getViewport({ scale: currentZoom * 1.5 * dpr })
@@ -371,23 +385,6 @@ async function renderPdfPage(info) {
 
   loadDiv.style.display = 'none'
   canvas.style.display  = 'block'
-
-  // Text layer — must set --scale-factor before constructing TextLayer,
-  // otherwise setLayerDimensions() resolves width to 0 and clips all spans.
-  if (info.tlObj) { info.tlObj.cancel(); info.tlObj = null }
-  tl.innerHTML = ''
-  const textViewport = page.getViewport({ scale: currentZoom * 1.5 })
-  tl.style.setProperty('--scale-factor', currentZoom * 1.5)
-  try {
-    const textContent = await page.getTextContent()
-    if (textContent.items.length > 0) {
-      const tlObj = new pdfjsLib.TextLayer({ textContentSource: textContent, container: tl, viewport: textViewport })
-      info.tlObj = tlObj
-      await tlObj.render()
-    }
-  } catch (e) {
-    console.error('[text-layer]', e)
-  }
 }
 
 // ── Scroll view management ────────────────────────────────────────────────────
@@ -508,7 +505,7 @@ async function init() {
   appData    = await window.talmud.loadData()
 
   const s = appData.settings
-  currentZoom = s.zoom || 1.0
+  currentZoom = 1.0
   document.documentElement.setAttribute('data-theme', s.theme || 'dark')
   if (s.notesOpen)  notesPanel.classList.add('open')
   if (s.sidebarOpen) sidebar.classList.add('open')
@@ -621,7 +618,13 @@ function navigateTo(t, daf, amud, saveState = true) {
 
   // Scroll to page if already in DOM, otherwise load fresh
   if (pageMap.has(key)) {
-    pageMap.get(key).wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    if (pendingSearchHL && pendingSearchHL.key === key) {
+      const hl = pendingSearchHL
+      pendingSearchHL = null
+      applySearchHL(pageMap.get(key), hl.hlText, hl.segHe || '', hl.occurrenceIdx || 0)
+    } else {
+      pageMap.get(key).wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
   } else {
     initScrollView(t, daf, amud)
   }
@@ -692,6 +695,143 @@ function redrawPageHighlights(info) {
   const ctx = info.hlCnv.getContext('2d')
   ctx.clearRect(0, 0, info.hlCnv.width, info.hlCnv.height)
   ;(appData.highlights[info.key] || []).forEach(hl => drawHighlight(ctx, info.hlCnv, hl))
+  drawSearchWordHls(ctx, info.hlCnv, searchWordHls.get(info.key) || [])
+}
+
+function drawSearchWordHls(ctx, cnv, words) {
+  if (!words.length) return
+  ctx.save()
+  ctx.fillStyle   = 'rgba(255,190,0,0.38)'
+  ctx.strokeStyle = 'rgba(220,140,0,0.65)'
+  ctx.lineWidth   = 1.5
+  for (const [x, y, w, h] of words) {
+    ctx.fillRect  (x * cnv.width, y * cnv.height, w * cnv.width, h * cnv.height)
+    ctx.strokeRect(x * cnv.width, y * cnv.height, w * cnv.width, h * cnv.height)
+  }
+  ctx.restore()
+}
+
+async function applySearchHL(info, hlText, segHe = '', occurrenceIdx = 0) {
+  if (!hlText) return
+  try {
+    const words = await fetchOcrWords(info.t, info.daf, info.amud)
+    if (!words) return
+    const gemaraWords = words.filter(w => (w[5] ?? 4) === 0)
+    let boxes = []
+    // 1. Context match → pinpoints the specific occurrence
+    if (segHe) boxes = findByContext(gemaraWords, hlText, segHe)
+    if (!boxes.length && segHe) boxes = findByContext(words, hlText, segHe)
+    // 2. Context failed: pick the n-th direct match using occurrence index
+    if (!boxes.length) {
+      const pool = findMatchingBoxes(gemaraWords, hlText).length
+        ? findMatchingBoxes(gemaraWords, hlText)
+        : findMatchingBoxes(words, hlText)
+      if (pool.length) boxes = [pool[Math.min(occurrenceIdx, pool.length - 1)]]
+    }
+    if (!boxes.length) return
+    searchWordHls.set(info.key, boxes)
+    redrawPageHighlights(info)
+
+    // Scroll so the highlighted word is centred in the viewer
+    const box      = boxes[0]
+    const cnvRect  = info.canvas.getBoundingClientRect()
+    const scrRect  = viewerScroll.getBoundingClientRect()
+    const canvasH  = parseFloat(info.canvas.style.height) || info.canvas.height / (window.devicePixelRatio || 1)
+    const wordMidY = cnvRect.top - scrRect.top + (box[1] + box[3] / 2) * canvasH
+    viewerScroll.scrollTop = Math.max(0, viewerScroll.scrollTop + wordMidY - viewerScroll.clientHeight / 2)
+  } catch (e) {
+    console.error('[applySearchHL]', e)
+  }
+}
+
+function findMatchingBoxes(pool, hlText) {
+  const tokens = stripNikud(hlText)
+    .split(/[\s־׀׳״–—"'()\[\].,;:!?]+/)
+    .filter(t => t.length >= 2)
+  if (!tokens.length) return []
+
+  if (tokens.length === 1) {
+    return pool
+      .filter(w => stripNikud(w[0]).includes(tokens[0]))
+      .map(w => [w[1], w[2], w[3], w[4]])
+  }
+
+  const results = []
+  for (let i = 0; i <= pool.length - tokens.length; i++) {
+    let match = true
+    for (let j = 0; j < tokens.length; j++) {
+      const tok = tokens[j], txt = stripNikud(pool[i + j][0])
+      if (!txt.includes(tok) && !tok.includes(txt)) { match = false; break }
+    }
+    if (match) {
+      const slice = pool.slice(i, i + tokens.length)
+      const minX = Math.min(...slice.map(w => w[1]))
+      const minY = Math.min(...slice.map(w => w[2]))
+      const maxX = Math.max(...slice.map(w => w[1] + w[3]))
+      const maxY = Math.max(...slice.map(w => w[2] + w[4]))
+      results.push([minX, minY, maxX - minX, maxY - minY])
+    }
+  }
+  return results
+}
+
+// Fallback: anchor by context words around the target in the Sefaria segment.
+// Tries words before the target (expecting OCR target = next word), then words
+// after (expecting OCR target = preceding word). Progressively shortens the
+// window from 5 tokens down to 2 to tolerate OCR misreads.
+function findByContext(gemaraWords, hlText, segHe) {
+  const segStripped = stripNikud(segHe)
+  const targetIdx   = segStripped.indexOf(hlText)
+  if (targetIdx < 0) return []
+
+  function tokenize(s) {
+    return s.split(/[\s־׀׳״–—"'()\[\].,;:!?0-9]+/)
+      .map(t => t.trim()).filter(t => t.length >= 2)
+  }
+
+  const beforeAll = tokenize(segStripped.slice(0, targetIdx))
+  const afterAll  = tokenize(segStripped.slice(targetIdx + hlText.length)).slice(0, 5)
+  // First token of the search text — used to verify the candidate word is actually the target
+  const firstTok = tokenize(hlText)[0] || ''
+
+  function ctxMatch(pool, ctx, i) {
+    for (let j = 0; j < ctx.length; j++) {
+      const ocrTxt = stripNikud(pool[i + j][0])
+      const tok    = ctx[j]
+      if (!ocrTxt.includes(tok) && !tok.includes(ocrTxt)) return false
+    }
+    return true
+  }
+
+  function targetMatch(pool, idx) {
+    if (!firstTok) return true
+    const txt = stripNikud(pool[idx][0])
+    return txt.includes(firstTok) || firstTok.includes(txt)
+  }
+
+  // Before-context: find last N words before target in OCR → target is next word after run
+  for (let len = Math.min(5, beforeAll.length); len >= 2; len--) {
+    const ctx = beforeAll.slice(-len)
+    for (let i = 0; i + len < gemaraWords.length; i++) {
+      if (ctxMatch(gemaraWords, ctx, i) && targetMatch(gemaraWords, i + len)) {
+        const w = gemaraWords[i + len]
+        return [[w[1], w[2], w[3], w[4]]]
+      }
+    }
+  }
+
+  // After-context: find first N words after target in OCR → target is word before run
+  for (let len = Math.min(5, afterAll.length); len >= 2; len--) {
+    const ctx = afterAll.slice(0, len)
+    for (let i = 1; i + len <= gemaraWords.length; i++) {
+      if (ctxMatch(gemaraWords, ctx, i) && targetMatch(gemaraWords, i - 1)) {
+        const w = gemaraWords[i - 1]
+        return [[w[1], w[2], w[3], w[4]]]
+      }
+    }
+  }
+
+  return []
 }
 
 function saveHighlight(info, x, y, w, h) {
@@ -733,7 +873,6 @@ function toggleHighlightMode() {
   pageMap.forEach(info => {
     info.hlCnv.classList.toggle('drawing-mode', highlightMode)
     info.hlCnv.classList.remove('erase-mode')
-    info.tl.classList.toggle('hl-active', highlightMode)
   })
 }
 
@@ -918,6 +1057,7 @@ function updateStatusBar() {
 // ── Zoom ──────────────────────────────────────────────────────────────────────
 function zoomIn()  { if (currentZoom < 3.0) { currentZoom = Math.round((currentZoom + 0.15)*100)/100; applyZoom() } }
 function zoomOut() { if (currentZoom > 0.4) { currentZoom = Math.round((currentZoom - 0.15)*100)/100; applyZoom() } }
+
 
 async function applyZoom() {
   zoomLevel.value = Math.round(currentZoom * 100) + '%'
@@ -1297,12 +1437,13 @@ $('btn-close').addEventListener('click',    () => window.talmud.winClose())
 // ── Search ────────────────────────────────────────────────────────────────────
 const searchPanel   = $('search-panel')
 const searchInput   = $('search-input')
+const searchClear   = $('search-clear')
 const searchGo      = $('search-go')
 const searchStatus  = $('search-status')
 const searchResults = $('search-results')
 const btnSearch     = $('btn-search')
 
-let searchLang = 'both'
+let searchLang = 'he'
 
 // Strip Hebrew nikud/cantillation so "אמר" matches "אָמַר"
 function stripNikud(s) {
@@ -1362,6 +1503,30 @@ function makeSnippet(text, query, isHe) {
   }
 }
 
+function preloadSearchResultPdfs(results) {
+  const seen = new Set()
+  const toLoad = []
+  for (const { key } of results) {
+    if (seen.has(key) || pageMap.has(key) || preloadCache[key]) continue
+    seen.add(key)
+    toLoad.push(key)
+    if (toLoad.length >= 10) break
+  }
+  for (const key of toLoad) {
+    const { name, daf, amud } = parseSearchKey(key)
+    const t = TRACTATES.find(x => x.name === name)
+    if (!t) continue
+    ;(async () => {
+      try {
+        const result = await window.talmud.readPDF(pdfPath(t, daf, amud))
+        if (!result.exists || result.size < 1000 || preloadCache[key]) return
+        const bytes = Uint8Array.from(atob(result.data), c => c.charCodeAt(0))
+        preloadCache[key] = await pdfjsLib.getDocument({ data: bytes }).promise
+      } catch {}
+    })()
+  }
+}
+
 function runSearch() {
   const raw = searchInput.value.trim()
   if (raw.length < 1) {
@@ -1370,23 +1535,24 @@ function runSearch() {
     return
   }
 
-  const qStripped = stripNikud(raw)   // for Hebrew matching (nikud-insensitive)
-  const qLower    = raw.toLowerCase() // for English matching
+  const qStripped = stripNikud(raw)
+  const qLower    = raw.toLowerCase()
 
   const results = []
 
   for (const [key, segments] of translateCache) {
-    let bestHe = null, bestEn = null
     for (const seg of segments) {
-      if (!bestHe && (searchLang === 'both' || searchLang === 'he') && seg.he) {
-        if (stripNikud(seg.he).includes(qStripped)) bestHe = seg.he
+      const heMatch = (searchLang === 'both' || searchLang === 'he') && seg.he
+        && stripNikud(seg.he).includes(qStripped)
+      const enMatch = (searchLang === 'both' || searchLang === 'en') && seg.en
+        && seg.en.toLowerCase().includes(qLower)
+      if (heMatch || enMatch) {
+        // hlText: Hebrew query for Hebrew matches; empty for English-only
+        // (can't reliably map English match → specific Hebrew phrase on page)
+        const hlText = heMatch ? qStripped : ''
+        results.push({ key, he: heMatch ? seg.he : null, en: enMatch ? seg.en : null, hlText })
       }
-      if (!bestEn && (searchLang === 'both' || searchLang === 'en') && seg.en) {
-        if (seg.en.toLowerCase().includes(qLower)) bestEn = seg.en
-      }
-      if (bestHe && bestEn) break
     }
-    if (bestHe || bestEn) results.push({ key, bestHe, bestEn })
   }
 
   const total = results.length
@@ -1399,30 +1565,69 @@ function runSearch() {
     return
   }
 
-  searchResults.innerHTML = results.map(({ key, bestHe, bestEn }) => {
+  _searchResultSegs.length = 0
+  const _pageOccCount = {}
+  searchResults.innerHTML = results.map(({ key, he, en, hlText }, i) => {
+    _searchResultSegs.push(he || '')
+    const occ = (_pageOccCount[key] = (_pageOccCount[key] || 0))
+    _pageOccCount[key]++
     const { name, daf, amud } = parseSearchKey(key)
-    const heSnippet = bestHe
-      ? `<div class="sr-snippet rtl">${makeSnippet(bestHe, qStripped, true)}</div>` : ''
-    const enSnippet = bestEn
-      ? `<div class="sr-snippet">${makeSnippet(bestEn, qLower, false)}</div>` : ''
-    return `<div class="search-result" data-key="${escHtml(key)}">
+    const heSnippet = he ? `<div class="sr-snippet rtl">${makeSnippet(he, qStripped, true)}</div>` : ''
+    const enSnippet = en ? `<div class="sr-snippet">${makeSnippet(en, qLower, false)}</div>` : ''
+    return `<div class="search-result" data-key="${escHtml(key)}" data-hl="${escHtml(hlText)}" data-idx="${i}" data-occ="${occ}">
       <div class="sr-label">${escHtml(name)} ${daf}${amud}</div>
       ${heSnippet}${enSnippet}
     </div>`
   }).join('')
 
+  preloadSearchResultPdfs(results)
+
   searchResults.querySelectorAll('.search-result').forEach(el => {
     el.addEventListener('click', () => {
       const { name, daf, amud } = parseSearchKey(el.dataset.key)
       const t = TRACTATES.find(x => x.name === name)
-      if (t) navigateTo(t, daf, amud)
+      if (!t) return
+      const segHe         = _searchResultSegs[+el.dataset.idx] || ''
+      const hlText        = el.dataset.hl || ''
+      const occurrenceIdx = +el.dataset.occ || 0
+
+      currentZoom = 1.0
+      zoomLevel.value = '100%'
+      appData.settings.zoom = 1.0
+
+      if (el.dataset.key === amudKey() && pageMap.has(el.dataset.key)) {
+        applyZoom().then(() => applySearchHL(pageMap.get(el.dataset.key), hlText, segHe, occurrenceIdx))
+        return
+      }
+
+      searchWordHls.clear()
+      pageMap.forEach(info => redrawPageHighlights(info))
+      pendingSearchHL = { key: el.dataset.key, hlText, segHe, occurrenceIdx }
+      navigateTo(t, daf, amud)
     })
   })
 }
 
+function clearSearch() {
+  searchInput.value = ''
+  searchStatus.textContent = ''
+  searchResults.innerHTML = ''
+  searchClear.classList.remove('visible')
+  searchWordHls.clear()
+  pageMap.forEach(info => redrawPageHighlights(info))
+  searchInput.focus()
+}
+
 btnSearch.addEventListener('click', toggleSearch)
 searchGo.addEventListener('click', runSearch)
-searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') runSearch() })
+searchClear.addEventListener('click', clearSearch)
+searchInput.addEventListener('input', () => {
+  searchClear.classList.toggle('visible', searchInput.value.length > 0)
+})
+searchInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') runSearch()
+  if (e.key === 'Escape') clearSearch()
+})
 
 document.querySelectorAll('.search-lang-btn').forEach(btn => {
   btn.addEventListener('click', () => {

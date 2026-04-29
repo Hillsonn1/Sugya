@@ -216,13 +216,16 @@
       <div class="panel-header">
         <span>Search</span>
         <div id="search-lang-toggle">
-          <button class="search-lang-btn active" data-lang="both">Both</button>
-          <button class="search-lang-btn" data-lang="he">Hebrew</button>
+          <button class="search-lang-btn active" data-lang="he">Hebrew</button>
           <button class="search-lang-btn" data-lang="en">English</button>
+          <button class="search-lang-btn" data-lang="both">Both</button>
         </div>
       </div>
       <div id="search-input-row">
-        <input id="search-input" placeholder="Search Talmud…" autocomplete="off" spellcheck="false">
+        <div id="search-input-wrap">
+          <input id="search-input" placeholder="Search Talmud…" autocomplete="off" spellcheck="false">
+          <button id="search-clear" title="Clear">✕</button>
+        </div>
         <button id="search-go">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>

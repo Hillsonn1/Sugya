@@ -2,10 +2,15 @@ const { app, BrowserWindow, ipcMain, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const https = require('https')
+const zlib = require('zlib')
 
 const TALMUD_PDF_ROOT = app.isPackaged
   ? path.join(process.resourcesPath, 'pdfs')
   : path.join(require('os').homedir(), 'Documents', 'talmud', 'pdfs')
+
+const OCR_DATA_ROOT = app.isPackaged
+  ? path.join(process.resourcesPath, 'ocr-data')
+  : path.join(__dirname, 'src', 'ocr-data')
 
 const DATA_FILE         = path.join(app.getPath('userData'), 'talmud-data.json')
 const CONFIG_FILE       = path.join(app.getPath('userData'), 'talmud-config.json')
@@ -76,6 +81,23 @@ app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) creat
 // ── IPC Handlers ──────────────────────────────────────────────────────────────
 
 ipcMain.handle('get-talmud-path', () => TALMUD_PDF_ROOT)
+
+// OCR word-position database (cached in memory per tractate)
+const _ocrCache = new Map()
+ipcMain.handle('get-ocr-words', (_, tractate, daf, amud) => {
+  let data = _ocrCache.get(tractate)
+  if (!data) {
+    const file = path.join(OCR_DATA_ROOT, `${tractate.replace(/ /g, '_')}.json.gz`)
+    if (!fs.existsSync(file)) return null
+    try {
+      const compressed = fs.readFileSync(file)
+      data = JSON.parse(zlib.gunzipSync(compressed).toString('utf8'))
+      _ocrCache.set(tractate, data)
+    } catch { return null }
+  }
+  const pageKey = `${String(daf).padStart(3, '0')}${amud}`
+  return data[pageKey] || null
+})
 
 ipcMain.handle('load-data', () => loadData())
 

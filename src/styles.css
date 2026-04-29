@@ -521,38 +521,13 @@ select:focus { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold-glow)
 .hl-canvas.drawing-mode { pointer-events: all; cursor: crosshair }
 .hl-canvas.erase-mode   { pointer-events: all; cursor: pointer }
 
-/* pdfjs-required text layer base styles */
 .textLayer {
   position: absolute;
-  text-align: initial;
   inset: 0;
-  overflow: clip;
-  line-height: 1;
-  -webkit-text-size-adjust: none;
-  text-size-adjust: none;
-  transform-origin: 0 0;
-  z-index: 15;
-  user-select: text;
-  -webkit-user-select: text;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
-
-.textLayer :is(span, br) {
-  color: transparent;
-  position: absolute;
-  white-space: pre;
-  cursor: text;
-  transform-origin: 0% 0%;
-}
-
-.textLayer ::selection {
-  background: rgba(100, 160, 255, 0.4);
-}
-
-.textLayer br::selection {
-  background: transparent;
-}
-
-.textLayer.hl-active { pointer-events: none }
 
 /* ── Translate panel ─────────────────────────────────────────────────────── */
 #translate-panel {
@@ -975,20 +950,43 @@ option.learned-daf { opacity: 0.6 }
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
-#search-input {
+#search-input-wrap {
   flex: 1;
+  position: relative;
+  min-width: 0;
+}
+#search-input {
+  width: 100%;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 5px;
   outline: none;
   color: var(--text);
   font-size: 13px;
-  padding: 6px 9px;
+  padding: 6px 26px 6px 9px;
   font-family: inherit;
-  min-width: 0;
+  box-sizing: border-box;
 }
 #search-input::placeholder { color: var(--text-muted) }
 #search-input:focus { border-color: var(--accent) }
+#search-clear {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--text-2);
+  border-radius: 50%;
+  transition: background 0.12s, color 0.12s;
+  line-height: 1;
+}
+#search-clear:hover { background: var(--bg-hover); color: var(--text-1) }
+#search-clear.visible { display: flex }
 #search-go {
   background: var(--accent);
   border: none;
