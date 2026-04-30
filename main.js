@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, shell, Menu, MenuItem } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const https = require('https')
@@ -54,7 +54,7 @@ function createWindow() {
     frame: false,
     titleBarStyle: 'hidden',
     backgroundColor: '#0a0d14',
-    icon: path.join(__dirname, 'src', 'icon.png'),
+    icon: path.join(__dirname, 'src', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -72,6 +72,14 @@ function createWindow() {
 
   win.on('maximize', () => win.webContents.send('window-state', 'maximized'))
   win.on('unmaximize', () => win.webContents.send('window-state', 'normal'))
+
+  // Right-click → Copy / Select All when text is selected (used by Select-text mode)
+  win.webContents.on('context-menu', (_, params) => {
+    if (!params.selectionText || !params.selectionText.trim()) return
+    const menu = new Menu()
+    menu.append(new MenuItem({ label: 'Copy', accelerator: 'CmdOrCtrl+C', click: () => win.webContents.copy() }))
+    menu.popup({ window: win })
+  })
 }
 
 app.whenReady().then(createWindow)

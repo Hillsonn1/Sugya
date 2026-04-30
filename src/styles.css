@@ -521,12 +521,41 @@ select:focus { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold-glow)
 .hl-canvas.drawing-mode { pointer-events: all; cursor: crosshair }
 .hl-canvas.erase-mode   { pointer-events: all; cursor: pointer }
 
-.textLayer {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  user-select: none;
-  -webkit-user-select: none;
+/* Selectable Hebrew text panel — slides in from the right when "Select text" is on */
+#select-panel {
+  width: 0; opacity: 0;
+  border-left: 1px solid var(--border);
+  border-right: none;
+}
+#select-panel.open { width: 360px; opacity: 1 }
+
+#select-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 18px 24px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+#select-content .sel-he {
+  direction: rtl;
+  font-size: 19px;
+  line-height: 1.85;
+  color: var(--text-1);
+  margin: 0 0 18px;
+  cursor: text;
+}
+
+.select-empty {
+  padding: 32px 18px;
+  color: var(--text-3);
+  font-size: 13px;
+  text-align: center;
+  line-height: 1.6;
+}
+
+#select-content ::selection {
+  background: rgba(100, 160, 255, 0.45);
 }
 
 /* ── Translate panel ─────────────────────────────────────────────────────── */

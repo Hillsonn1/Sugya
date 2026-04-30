@@ -103,6 +103,7 @@ let currentZoom = 1.0
 let preloadCache = {}
 let highlightMode = false
 let eraseMode = false
+let selectMode = false
 let activeHlColor = 'rgba(255,220,0,0.35)'
 let notesTimer = null
 let _zoomDebounce = null
@@ -170,6 +171,7 @@ const pagesContainer = $('pages-container')
 const viewerScroll   = $('viewer-scroll')
 const hlToolbar      = $('highlight-toolbar')
 const btnHlMode      = $('btn-highlight-mode')
+const btnSelectMode  = $('btn-select-mode')
 const btnHlDone      = $('btn-hl-done')
 const btnHlErase     = $('btn-hl-erase')
 const streakCount    = $('streak-count')
@@ -180,6 +182,8 @@ const overallLabel    = $('overall-progress-label')
 const translatePanel  = $('translate-panel')
 const translateContent= $('translate-content')
 const btnTranslate    = $('btn-translate')
+const selectPanel     = $('select-panel')
+const selectContent   = $('select-content')
 
 // ── Toast notifications ───────────────────────────────────────────────────────
 const toastContainer = document.createElement('div')
@@ -510,6 +514,7 @@ function setCurrentPage(t, daf, amud) {
   saveAppData()
 
   if (translateMode) loadTranslation()
+  if (selectMode) renderSelectablePanel()
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -644,6 +649,7 @@ function navigateTo(t, daf, amud, saveState = true) {
   }
 
   if (translateMode) loadTranslation()
+  if (selectMode) renderSelectablePanel()
 }
 
 function stepForward() {
@@ -894,10 +900,38 @@ function toggleHighlightMode() {
   hlToolbar.classList.toggle('visible', highlightMode)
   btnHlErase.classList.remove('active')
 
+  // Highlight and select are mutually exclusive — both want the mouse
+  if (highlightMode && selectMode) toggleSelectMode()
+
   pageMap.forEach(info => {
     info.hlCnv.classList.toggle('drawing-mode', highlightMode)
     info.hlCnv.classList.remove('erase-mode')
   })
+}
+
+function toggleSelectMode() {
+  selectMode = !selectMode
+  btnSelectMode.classList.toggle('active', selectMode)
+  selectPanel.classList.toggle('open', selectMode)
+  if (selectMode) {
+    if (translateMode) toggleTranslateMode()  // panels share right side
+    renderSelectablePanel()
+  }
+}
+
+function renderSelectablePanel() {
+  const key = amudKey()
+  const segments = translateCache.get(key)
+  if (!segments || !segments.length) {
+    selectContent.innerHTML = `<div class="select-empty">Hebrew text not yet downloaded for this daf.<br>Try the Translate panel first to fetch it.</div>`
+    return
+  }
+  // Strip nikud-only HTML; show each segment as its own RTL paragraph.
+  // Native browser selection handles Ctrl+C / right-click → Copy automatically.
+  selectContent.innerHTML = segments
+    .filter(s => s.he)
+    .map(s => `<p class="sel-he">${escHtml(s.he)}</p>`)
+    .join('')
 }
 
 // ── Bookmarks ─────────────────────────────────────────────────────────────────
@@ -1221,6 +1255,7 @@ function toggleTranslateMode() {
 
   if (translateMode) {
     if (highlightMode) toggleHighlightMode()
+    if (selectMode) toggleSelectMode()  // panels share right side
     loadTranslation()
   }
 }
@@ -1430,6 +1465,7 @@ selDaf.addEventListener('change', () => {
 })
 
 btnHlMode.addEventListener('click', toggleHighlightMode)
+btnSelectMode.addEventListener('click', toggleSelectMode)
 btnHlDone.addEventListener('click', toggleHighlightMode)
 btnTranslate.addEventListener('click', toggleTranslateMode)
 
@@ -1685,6 +1721,7 @@ document.addEventListener('keydown', e => {
     if (e.key === 'b' || e.key === 'B') toggleBookmark()
     if (e.key === 'l' || e.key === 'L') toggleLearned()
     if (e.key === 'h' || e.key === 'H') toggleHighlightMode()
+    if (e.key === 's' || e.key === 'S') toggleSelectMode()
     if (e.key === 't' || e.key === 'T') toggleTranslateMode()
     if (e.key === 'n' || e.key === 'N') {
       const open = notesPanel.classList.toggle('open')

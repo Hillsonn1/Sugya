@@ -13,7 +13,7 @@
     "icon": "src/icon.png",
     "win": {
       "target": "nsis",
-      "icon": "src/icon.png"
+      "icon": "src/icon.ico"
     },
     "nsis": {
       "oneClick": true,
