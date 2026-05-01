@@ -2,22 +2,19 @@
   "name": "sugya",
   "version": "1.0.0",
   "description": "Talmud learning desktop app",
+  "author": "Sugya",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win"
+    "dist": "electron-builder --win && \"%LOCALAPPDATA%\\Programs\\Inno Setup 6\\ISCC.exe\" sugya.iss"
   },
   "build": {
     "appId": "com.sugya.app",
     "productName": "Sugya",
     "icon": "src/icon.png",
     "win": {
-      "target": "nsis",
+      "target": "dir",
       "icon": "src/icon.ico"
-    },
-    "nsis": {
-      "oneClick": true,
-      "shortcutName": "Sugya"
     },
     "files": [
       "main.js",
