@@ -12,6 +12,10 @@ const OCR_DATA_ROOT = app.isPackaged
   ? path.join(process.resourcesPath, 'ocr-data')
   : path.join(__dirname, 'src', 'ocr-data')
 
+const COMMENTARY_DATA_ROOT = app.isPackaged
+  ? path.join(process.resourcesPath, 'commentary-data')
+  : path.join(__dirname, 'src', 'commentary-data')
+
 const DATA_FILE         = path.join(app.getPath('userData'), 'talmud-data.json')
 const CONFIG_FILE       = path.join(app.getPath('userData'), 'talmud-config.json')
 const TRANSLATION_FILE  = path.join(app.getPath('userData'), 'talmud-translations.json')
@@ -101,6 +105,23 @@ ipcMain.handle('get-ocr-words', (_, tractate, daf, amud) => {
       const compressed = fs.readFileSync(file)
       data = JSON.parse(zlib.gunzipSync(compressed).toString('utf8'))
       _ocrCache.set(tractate, data)
+    } catch { return null }
+  }
+  const pageKey = `${String(daf).padStart(3, '0')}${amud}`
+  return data[pageKey] || null
+})
+
+// Sefaria-linked commentaries (cached in memory per tractate, like OCR)
+const _commentaryCache = new Map()
+ipcMain.handle('get-commentaries', (_, tractate, daf, amud) => {
+  let data = _commentaryCache.get(tractate)
+  if (!data) {
+    const file = path.join(COMMENTARY_DATA_ROOT, `${tractate.replace(/ /g, '_')}.json.gz`)
+    if (!fs.existsSync(file)) return null
+    try {
+      const compressed = fs.readFileSync(file)
+      data = JSON.parse(zlib.gunzipSync(compressed).toString('utf8'))
+      _commentaryCache.set(tractate, data)
     } catch { return null }
   }
   const pageKey = `${String(daf).padStart(3, '0')}${amud}`

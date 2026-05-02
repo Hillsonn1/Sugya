@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('talmud', {
   loadTranslations:   ()          => ipcRenderer.invoke('load-translations'),
   saveTranslations:   (data)      => ipcRenderer.invoke('save-translations', data),
   getOcrWords:        (t, d, a)   => ipcRenderer.invoke('get-ocr-words', t, d, a),
+  getCommentaries:    (t, d, a)   => ipcRenderer.invoke('get-commentaries', t, d, a),
 
   onWindowState: (cb) => ipcRenderer.on('window-state', (_, s) => cb(s)),
 

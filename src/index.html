@@ -193,6 +193,12 @@
           </svg>
           Select text
         </button>
+        <button id="btn-commentary" class="footer-btn" title="Commentary mode (C)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2zM22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/>
+          </svg>
+          Commentary
+        </button>
         <button id="btn-translate" class="footer-btn" title="Translation mode (T)">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 5h12M9 3v2m4.5 13l-3-6-3 6m0 0h6M21 21l-6-6m0 0l3-3m-3 3l-3-3"/>
@@ -207,6 +213,15 @@
         </div>
       </div>
     </main>
+
+    <!-- Right Panel: Commentaries -->
+    <aside id="commentaries-panel" class="panel">
+      <div class="panel-header">
+        <span>Commentaries</span>
+        <span id="cmt-count" class="text-muted" style="font-size:11px"></span>
+      </div>
+      <div id="commentaries-content"></div>
+    </aside>
 
     <!-- Right Panel: Selectable Hebrew text -->
     <aside id="select-panel" class="panel">

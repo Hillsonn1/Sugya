@@ -104,6 +104,8 @@ let preloadCache = {}
 let highlightMode = false
 let eraseMode = false
 let selectMode = false
+let commentaryMode = false
+const _commentariesCache = new Map()  // pageKey → [{commentator, refs:[{ref, anchorRef, he, en}]}] | null
 let activeHlColor = 'rgba(255,220,0,0.35)'
 let notesTimer = null
 let _zoomDebounce = null
@@ -172,6 +174,10 @@ const viewerScroll   = $('viewer-scroll')
 const hlToolbar      = $('highlight-toolbar')
 const btnHlMode      = $('btn-highlight-mode')
 const btnSelectMode  = $('btn-select-mode')
+const btnCommentary       = $('btn-commentary')
+const commentariesPanel   = $('commentaries-panel')
+const commentariesContent = $('commentaries-content')
+const cmtCount            = $('cmt-count')
 const btnHlDone      = $('btn-hl-done')
 const btnHlErase     = $('btn-hl-erase')
 const streakCount    = $('streak-count')
@@ -515,6 +521,7 @@ function setCurrentPage(t, daf, amud) {
 
   if (translateMode) loadTranslation()
   if (selectMode) renderSelectablePanel()
+  if (commentaryMode) loadCommentariesForCurrentPage()
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -650,6 +657,7 @@ function navigateTo(t, daf, amud, saveState = true) {
 
   if (translateMode) loadTranslation()
   if (selectMode) renderSelectablePanel()
+  if (commentaryMode) loadCommentariesForCurrentPage()
 }
 
 function stepForward() {
@@ -900,7 +908,7 @@ function toggleHighlightMode() {
   hlToolbar.classList.toggle('visible', highlightMode)
   btnHlErase.classList.remove('active')
 
-  // Highlight and select are mutually exclusive — both want the mouse
+  // Highlight is mutually exclusive with select — both want the mouse
   if (highlightMode && selectMode) toggleSelectMode()
 
   pageMap.forEach(info => {
@@ -914,7 +922,8 @@ function toggleSelectMode() {
   btnSelectMode.classList.toggle('active', selectMode)
   selectPanel.classList.toggle('open', selectMode)
   if (selectMode) {
-    if (translateMode) toggleTranslateMode()  // panels share right side
+    if (translateMode) toggleTranslateMode()    // panels share right side
+    if (commentaryMode) toggleCommentaryMode()
     renderSelectablePanel()
   }
 }
@@ -1201,6 +1210,77 @@ async function backgroundDownload() {
 }
 
 // ── Sefaria translation ───────────────────────────────────────────────────────
+// ── Commentaries side panel ──────────────────────────────────────────────────
+// Fetches all Sefaria-linked commentaries for the current daf, groups by
+// commentator, and shows them in a collapsible side-panel list. No inline
+// markers, no PDF overlay — clean separation between the daf view and the
+// commentary text view.
+async function fetchCommentariesForDaf(t, daf, amud) {
+  const cacheKey = makePageKey(t, daf, amud)
+  if (_commentariesCache.has(cacheKey)) return _commentariesCache.get(cacheKey)
+  // Reads from the gzipped per-tractate file shipped in the installer's
+  // resources — no Sefaria API call at runtime, works offline.
+  const data = await window.talmud.getCommentaries(t.name, daf, amud)
+  _commentariesCache.set(cacheKey, data || null)
+  return data || null
+}
+
+function renderCommentariesPanel(loading = false) {
+  if (loading) {
+    commentariesContent.innerHTML = `<div class="select-empty"><div class="spinner"></div>Loading commentaries…</div>`
+    cmtCount.textContent = ''
+    return
+  }
+  const data = _commentariesCache.get(amudKey())
+  if (!data || !data.length) {
+    commentariesContent.innerHTML = `<div class="select-empty">No commentaries available for this daf.</div>`
+    cmtCount.textContent = ''
+    return
+  }
+
+  cmtCount.textContent = `${data.length} commentator${data.length === 1 ? '' : 's'}`
+  commentariesContent.innerHTML = data.map((entry, idx) => {
+    const segments = entry.refs.map(r => `
+      <div class="cmt-seg">
+        ${r.anchorRef ? `<div class="cmt-seg-ref">${escHtml(r.anchorRef)}</div>` : ''}
+        <div class="cmt-seg-he">${r.he || ''}</div>
+      </div>
+    `).join('')
+    return `
+      <div class="cmt-item" data-idx="${idx}">
+        <button class="cmt-header">
+          <span class="cmt-arrow">▶</span>
+          <span class="cmt-name" dir="rtl">${escHtml(entry.he)}</span>
+          <span class="cmt-count">${entry.refs.length}</span>
+        </button>
+        <div class="cmt-body">${segments}</div>
+      </div>
+    `
+  }).join('')
+
+  commentariesContent.querySelectorAll('.cmt-header').forEach(btn => {
+    btn.addEventListener('click', () => btn.parentElement.classList.toggle('expanded'))
+  })
+}
+
+async function loadCommentariesForCurrentPage() {
+  renderCommentariesPanel(true)  // show loading state
+  await fetchCommentariesForDaf(currentTractate, currentDaf, currentAmud)
+  if (commentaryMode) renderCommentariesPanel()
+}
+
+function toggleCommentaryMode() {
+  commentaryMode = !commentaryMode
+  btnCommentary.classList.toggle('active', commentaryMode)
+  commentariesPanel.classList.toggle('open', commentaryMode)
+  if (commentaryMode) {
+    if (translateMode) toggleTranslateMode()
+    if (selectMode) toggleSelectMode()
+    if (highlightMode) toggleHighlightMode()
+    loadCommentariesForCurrentPage()
+  }
+}
+
 async function fetchSefaria(tractate, daf, amud) {
   const name = SEFARIA_NAMES[tractate]
   if (!name) return null
@@ -1256,6 +1336,7 @@ function toggleTranslateMode() {
   if (translateMode) {
     if (highlightMode) toggleHighlightMode()
     if (selectMode) toggleSelectMode()  // panels share right side
+    if (commentaryMode) toggleCommentaryMode()
     loadTranslation()
   }
 }
@@ -1466,6 +1547,7 @@ selDaf.addEventListener('change', () => {
 
 btnHlMode.addEventListener('click', toggleHighlightMode)
 btnSelectMode.addEventListener('click', toggleSelectMode)
+btnCommentary.addEventListener('click', toggleCommentaryMode)
 btnHlDone.addEventListener('click', toggleHighlightMode)
 btnTranslate.addEventListener('click', toggleTranslateMode)
 
@@ -1722,6 +1804,7 @@ document.addEventListener('keydown', e => {
     if (e.key === 'l' || e.key === 'L') toggleLearned()
     if (e.key === 'h' || e.key === 'H') toggleHighlightMode()
     if (e.key === 's' || e.key === 'S') toggleSelectMode()
+    if (e.key === 'c' || e.key === 'C') toggleCommentaryMode()
     if (e.key === 't' || e.key === 'T') toggleTranslateMode()
     if (e.key === 'n' || e.key === 'N') {
       const open = notesPanel.classList.toggle('open')

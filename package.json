@@ -30,6 +30,10 @@
       {
         "from": "src/ocr-data",
         "to": "ocr-data"
+      },
+      {
+        "from": "src/commentary-data",
+        "to": "commentary-data"
       }
     ]
   },
