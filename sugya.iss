@@ -6,7 +6,7 @@
 #define MyAppPublisher  "Sugya"
 #define MyAppExeName    "Sugya.exe"
 #define MyAppURL        "https://github.com/Hillsonn1/Sugya"
-#define UnpackedDir     "dist\win-arm64-unpacked"
+#define UnpackedDir     "dist\win-unpacked"
 
 [Setup]
 ; Stable per-app GUID — never change this once published, or upgrades break
@@ -29,8 +29,8 @@ UninstallDisplayName={#MyAppName}
 Compression=lzma2/normal
 SolidCompression=yes
 WizardStyle=modern
-ArchitecturesAllowed=x64compatible arm64
-ArchitecturesInstallIn64BitMode=x64compatible arm64
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 CloseApplications=yes
 
